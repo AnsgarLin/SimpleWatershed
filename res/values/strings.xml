@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="app_name">StickMaker</string>
+    <string name="menu_load">Load Image</string>
+    <string name="cutout_image_description">To show cutout image</string>
+</resources>
