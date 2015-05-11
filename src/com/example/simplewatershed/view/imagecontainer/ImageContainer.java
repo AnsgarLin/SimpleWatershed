@@ -619,6 +619,19 @@ public class ImageContainer extends RelativeLayout {
 		mScale = values[Matrix.MSCALE_X];
 	}
 
+	/**
+	 * Get watershed mask's outer rect.
+	 */
+	public Rect getWatershedMaskRect() {
+		Mat tmpTransMatForPreview = new Mat(mTransMatForPreview.size(), CvType.CV_8UC1);
+		Imgproc.cvtColor(mTransMatForPreview, tmpTransMatForPreview, Imgproc.COLOR_BGRA2GRAY);
+
+		List<MatOfPoint> contours = new ArrayList<MatOfPoint>();
+		Imgproc.findContours(tmpTransMatForPreview, contours, new Mat(), Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE, new Point(0, 0));
+
+		return ImageProcessor.combineContourRect(contours);
+	}
+
 	public void setState(STATE state) {
 		mState = state;
 	}
