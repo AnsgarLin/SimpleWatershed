@@ -26,7 +26,6 @@ import android.widget.RelativeLayout;
 import android.widget.Toast;
 
 import com.example.simplewatershed.R;
-import com.example.simplewatershed.util.Logger;
 import com.example.simplewatershed.util.Util;
 
 public class ImageContainer extends RelativeLayout {
@@ -562,18 +561,6 @@ public class ImageContainer extends RelativeLayout {
 		return mTransMatForPreview;
 	}
 
-	public Rect getWatershedMaskRect() {
-		Mat tmpTransMatForPreview = new Mat(mTransMatForPreview.size(), CvType.CV_8UC1);
-		Imgproc.cvtColor(mTransMatForPreview, tmpTransMatForPreview, Imgproc.COLOR_BGRA2GRAY);
-
-		List<MatOfPoint> contours = new ArrayList<MatOfPoint>();
-		Imgproc.findContours(tmpTransMatForPreview, contours, new Mat(), Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE, new Point(0, 0));
-
-		Logger.d(getClass(), "Rect: " + ImageProcessor.combineContourRect(contours));
-
-		return ImageProcessor.combineContourRect(contours);
-	}
-
 	// ============================================================
 	// Get/Set functions
 
@@ -617,6 +604,19 @@ public class ImageContainer extends RelativeLayout {
 		}
 		mEraserThickness = mThickness * 4;
 		mScale = values[Matrix.MSCALE_X];
+	}
+
+	/**
+	 * Get watershed mask's outer rect.
+	 */
+	public Rect getWatershedMaskRect() {
+		Mat tmpTransMatForPreview = new Mat(mTransMatForPreview.size(), CvType.CV_8UC1);
+		Imgproc.cvtColor(mTransMatForPreview, tmpTransMatForPreview, Imgproc.COLOR_BGRA2GRAY);
+
+		List<MatOfPoint> contours = new ArrayList<MatOfPoint>();
+		Imgproc.findContours(tmpTransMatForPreview, contours, new Mat(), Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE, new Point(0, 0));
+
+		return ImageProcessor.combineContourRect(contours);
 	}
 
 	public void setState(STATE state) {
