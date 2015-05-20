@@ -207,9 +207,9 @@ public class Util {
 		int ZOOM = 2;
 
 		class TransInfo {
-			private PointF mTranslate;
-			private float mScale;
-			private float mRotation;
+			PointF mTranslate;
+			float mScale;
+			float mRotation;
 
 			/**
 			 * Initial the transition state. Use set() method for setting each state
@@ -244,6 +244,42 @@ public class Util {
 			public float getRotation() {
 				return mRotation;
 			}
+
+			@Override
+			public boolean equals(Object o) {
+				if (this == o) {
+					return true;
+				}
+
+				if (!(o instanceof TransInfo)) {
+					return false;
+				}
+
+				TransInfo target = (TransInfo) o;
+
+				return (mRotation == target.mRotation) && (mScale == target.mScale)
+						&& (mTranslate == null ? target.mTranslate == null : mTranslate.equals(target.mTranslate));
+			}
+
+			@Override
+			public int hashCode() {
+				// Start with a non-zero constant.
+				int result = 17;
+
+				// Include a hash for each field.
+				result = (31 * result) + Float.floatToIntBits(mScale);
+				result = (31 * result) + Float.floatToIntBits(mRotation);
+				result = (31 * result) + (mTranslate == null ? 0 : mTranslate.hashCode());
+
+				return result;
+			}
+
+			@Override
+			public String toString() {
+				return getClass().getName() + "[" + "Translate = (" + mTranslate.x + ", " + mTranslate.y + ") " + "Scale = " + mScale + " "
+						+ "Rotation = " + mRotation + "]";
+			}
+
 		}
 
 	}
@@ -358,7 +394,7 @@ public class Util {
 		/**
 		 * Get transition state between each step
 		 */
-		public TransInfo getTranslate() {
+		public TransInfo getTransInfo() {
 			return mTransInfo;
 		}
 
