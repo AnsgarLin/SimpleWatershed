@@ -16,7 +16,6 @@ import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Bitmap.Config;
 import android.graphics.Matrix;
-import android.graphics.PointF;
 import android.util.AttributeSet;
 import android.view.MotionEvent;
 import android.view.View;
@@ -27,6 +26,7 @@ import android.widget.Toast;
 
 import com.example.simplewatershed.R;
 import com.example.simplewatershed.util.Util;
+import com.example.simplewatershed.util.Util.ScaledImageViewTouchListener;
 
 public class ImageContainer extends RelativeLayout {
 	// General
@@ -235,12 +235,18 @@ public class ImageContainer extends RelativeLayout {
 	 * Dispatch touch event base on navbar button
 	 */
 	public class ImageTouchDispatcher implements OnTouchListener {
+		private boolean ZOOM = false;
+
 		private ContainerTouchListener mContainerTouchListener;
 		private ScaledImageViewTouchListener mScaledImageViewTouchListener;
 
 		public ImageTouchDispatcher() {
 			mContainerTouchListener = new ContainerTouchListener();
-			mScaledImageViewTouchListener = new ScaledImageViewTouchListener().initConfigure(mBaseImage);
+			mScaledImageViewTouchListener = new ScaledImageViewTouchListener(mBaseImage);
+			// Set the listener will handle drag event only on two fingers on the screen
+			mScaledImageViewTouchListener.setSingleDrag(false);
+			// Set the listener will ignore any rotate event
+			mScaledImageViewTouchListener.setRotatable(false);
 		}
 
 		public void onDestroy() {
@@ -251,18 +257,47 @@ public class ImageContainer extends RelativeLayout {
 
 		@Override
 		public boolean onTouch(View v, MotionEvent event) {
-			// Dispatch touch event based on state
-			if ((mState == STATE.FG) || (mState == STATE.ERASER)) {
-				return mContainerTouchListener.onTouch(v, event);
-			} else if ((mState == STATE.ZOOMER) || (mState == STATE.SHAPE)) {
-				if (mScaledImageViewTouchListener.onTouch(v, event)) {
-					setAllImageMatrix(null);
-					// Make stick container can be drag/scale with image
-					getTransitionState();
-					return true;
+			boolean result = false;
+
+			// Zoom mode will be turned on only when the second finger touch on the screen, and turned off when all fingers take off<br>
+			// If not in ZOOM mode, the flow will be DOWN -> MOVE -> UP
+			// If in ZOOM mode, the flow will be POINTER_DOWN -> MOVE -> POINTER_UP
+			switch (event.getAction() & MotionEvent.ACTION_MASK) {
+			case MotionEvent.ACTION_DOWN:
+				if (!ZOOM) {
+					result = mContainerTouchListener.onTouch(v, event);
 				}
+				break;
+			case MotionEvent.ACTION_MOVE:
+				if (!ZOOM) {
+					result = mContainerTouchListener.onTouch(v, event);
+				} else {
+					result = mScaledImageViewTouchListener.onTouch(v, event);
+					if (mScaledImageViewTouchListener.onTouch(v, event)) {
+						setAllImageMatrix(null);
+						// Make stick container can be drag/scale with image
+						getTransitionState();
+					}
+				}
+				break;
+			case MotionEvent.ACTION_UP:
+				if (!ZOOM) {
+					result = mContainerTouchListener.onTouch(v, event);
+				} else {
+					ZOOM = false;
+					result = mScaledImageViewTouchListener.onTouch(v, event);
+				}
+				break;
+			case MotionEvent.ACTION_POINTER_DOWN:
+				ZOOM = true;
+				result = mScaledImageViewTouchListener.onTouch(v, event);
+				break;
+			case MotionEvent.ACTION_POINTER_UP:
+				result = mScaledImageViewTouchListener.onTouch(v, event);
+				break;
 			}
-			return false;
+
+			return result;
 		}
 	}
 
@@ -294,18 +329,20 @@ public class ImageContainer extends RelativeLayout {
 				curPoint.x = (event.getX() - mTransX) / mScale;
 				curPoint.y = (event.getY() - mTransY) / mScale;
 
-				if (mState == STATE.FG) {
-					Core.line(mTransMatForLine, prePoint, curPoint, ImageProcessor.sWhite, mThickness, Core.LINE_8, 0);
-					Core.line(mWatershedMask, prePoint, curPoint, ImageProcessor.sForeground, mThickness, Core.LINE_8, 0);
-				} else if (mState == STATE.ERASER) {
-					Core.line(mTransMatForLine, prePoint, curPoint, ImageProcessor.sTrans, mEraserThickness, Core.LINE_8, 0);
-					Core.line(mTransMatForPreview, prePoint, curPoint, ImageProcessor.sTrans, mEraserThickness, Core.LINE_8, 0);
-					ImageProcessor.showMatAsImage(mTransMatForPreview, mPreviewImage);
-				}
-				ImageProcessor.showMatAsImage(mTransMatForLine, mLineImage);
+				if (isMove()) {
+					if (mState == STATE.FG) {
+						Core.line(mTransMatForLine, prePoint, curPoint, ImageProcessor.sWhite, mThickness, Core.LINE_8, 0);
+						Core.line(mWatershedMask, prePoint, curPoint, ImageProcessor.sForeground, mThickness, Core.LINE_8, 0);
+					} else if (mState == STATE.ERASER) {
+						Core.line(mTransMatForLine, prePoint, curPoint, ImageProcessor.sTrans, mEraserThickness, Core.LINE_8, 0);
+						Core.line(mTransMatForPreview, prePoint, curPoint, ImageProcessor.sTrans, mEraserThickness, Core.LINE_8, 0);
+						ImageProcessor.showMatAsImage(mTransMatForPreview, mPreviewImage);
+					}
+					ImageProcessor.showMatAsImage(mTransMatForLine, mLineImage);
 
-				prePoint.x = curPoint.x;
-				prePoint.y = curPoint.y;
+					prePoint.x = curPoint.x;
+					prePoint.y = curPoint.y;
+				}
 
 				break;
 			case MotionEvent.ACTION_UP:
@@ -317,163 +354,9 @@ public class ImageContainer extends RelativeLayout {
 			}
 			return true;
 		}
-	}
 
-	/**
-	 * A listener for handling drag/scale/rotate event of ImageView's bitmap.<br>
-	 * <h3>Note:</h3> The target ImageView's layout should match parent, then set the touch event to it or its parent.<br>
-	 * <h3>Usage:</h3> ScaledImageViewTouchListener scaledImageViewTouchListener = new getScaledImageViewTouchListener().initConfigure(view);
-	 */
-	public class ScaledImageViewTouchListener implements OnTouchListener {
-		int NONE = 0;
-		int DRAG = 1;
-		int ZOOM = 2;
-
-		private int mMode;
-
-		private ImageView mTargetView;
-
-		private Matrix tempMatrix;
-		private Matrix startMatrix;
-
-		private TransInfo transInfo;
-
-		private PointF startPoint;
-		private float startDistance;
-
-		public class TransInfo {
-			private PointF mTranlate;
-			private float mScale;
-			private PointF mPivots;
-
-			public TransInfo() {
-				mTranlate = new PointF();
-				mPivots = new PointF();
-			}
-
-			public PointF getTranlate() {
-				return mTranlate;
-			}
-
-			public void setTranlate(float tranlateX, float tranlateY) {
-				mTranlate.x = tranlateX;
-				mTranlate.y = tranlateY;
-			}
-
-			public float getScale() {
-				return mScale;
-			}
-
-			public void setScale(float scale) {
-				mScale = scale;
-			}
-
-			public PointF getPivots() {
-				return mPivots;
-			}
-
-			public void setPivots(PointF pivot) {
-				mPivots.x = pivot.x;
-				mPivots.y = pivot.y;
-			}
-
-			public void setPivots(float pivotX, float pivotY) {
-				mPivots.x = pivotX;
-				mPivots.y = pivotY;
-			}
-		}
-
-		/**
-		 * The target ImageView's scale type must set to ScaleType.MATRIX. After using, call onDestroy() to make sure listener will not keep the
-		 * target ImageView's reference.
-		 * 
-		 * @param imageView
-		 *            The target ImageView's bitmap will be changed by touch event.
-		 */
-		public ScaledImageViewTouchListener initConfigure(ImageView imageView) {
-			mMode = NONE;
-			mTargetView = imageView;
-			mTargetView.setScaleType(ScaleType.MATRIX);
-
-			tempMatrix = new Matrix();
-			startMatrix = new Matrix();
-
-			transInfo = new TransInfo();
-
-			startPoint = new PointF();
-
-			return this;
-		}
-
-		/**
-		 * Release the target ImageView's reference
-		 */
-		public void onDestroy() {
-			mTargetView = null;
-
-		}
-
-		@Override
-		public boolean onTouch(View v, MotionEvent event) {
-			switch (event.getAction() & MotionEvent.ACTION_MASK) {
-			case MotionEvent.ACTION_DOWN:
-				mMode = DRAG;
-				startPoint.set(event.getX(), event.getY());
-				startMatrix.set(mTargetView.getImageMatrix());
-
-				break;
-			case MotionEvent.ACTION_MOVE:
-				if (mMode != NONE) {
-					tempMatrix.set(startMatrix);
-					if (mMode == DRAG) {
-						transInfo.setTranlate(event.getX() - startPoint.x, event.getY() - startPoint.y);
-						tempMatrix.postTranslate(transInfo.getTranlate().x, transInfo.getTranlate().y);
-					} else if (mMode == ZOOM) {
-						transInfo.setScale((float) getDistance(event.getX(0), event.getX(1), event.getY(0), event.getY(1)) / startDistance);
-						tempMatrix.postScale(transInfo.getScale(), transInfo.getScale(), transInfo.getPivots().x, transInfo.getPivots().y);
-					}
-				}
-				mTargetView.setImageMatrix(tempMatrix);
-
-				break;
-			case MotionEvent.ACTION_UP:
-				mMode = NONE;
-
-				break;
-			case MotionEvent.ACTION_POINTER_DOWN:
-				mMode = ZOOM;
-				startDistance = (float) getDistance(event.getX(0), event.getX(1), event.getY(0), event.getY(1));
-				transInfo.setPivots(getMidPoint(event.getX(0), event.getX(1), event.getY(0), event.getY(1)));
-
-				startMatrix.set(mTargetView.getImageMatrix());
-				tempMatrix.set(startMatrix);
-
-				break;
-			case MotionEvent.ACTION_POINTER_UP:
-				mMode = NONE;
-
-				break;
-			default:
-				break;
-			}
-
-			return true;
-		}
-
-		/**
-		 * Get distance between two points in 2-dimension
-		 */
-		private double getDistance(float sX, float tX, float sY, float tY) {
-			float x = sX - tX;
-			float y = sY - tY;
-			return Math.sqrt((x * x) + (y * y));
-		}
-
-		/**
-		 * Get mid-point between two points in 2-dimension
-		 */
-		private PointF getMidPoint(float sX, float tX, float sY, float tY) {
-			return new PointF((sX + tX) / 2, (sY + tY) / 2);
+		public boolean isMove() {
+			return (Math.abs(curPoint.x - prePoint.x) >= 10) || (Math.abs(curPoint.y - prePoint.y) >= 10);
 		}
 	}
 
